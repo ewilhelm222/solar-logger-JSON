@@ -1,0 +1,85 @@
+// -------------------------------------------------------------
+// Log voltage of Tortuga off-grid solar system lead-acid battery
+/* -------------------------------------------------------------
+
+
+
+------------------------------------------*/
+
+int led = D6;
+int boardLed = D7;
+int battery = A0;
+int relay = A1;
+unsigned long ADC0 = 0;
+int ADC1;
+double voltage;
+bool bypass;
+int now;
+const int numberOfReads = 10;
+int delayBetweenReads = 6; // in seconds
+bool timeToRead = true;
+int readNumber = 0;
+
+// We start with the setup function.
+
+void setup()
+{
+	// pin outputs
+	pinMode(led, OUTPUT);	   // Our LED pin is output (lighting up the LED)
+	pinMode(boardLed, OUTPUT); // Our on-board LED is output as well
+	// set now to now
+	now = Time.now();
+
+}
+
+
+void loop()
+{
+	if (timeToRead) {
+	    // Read the voltage and add it to the running total to be divided by numberOFReads later
+	    ADC0 = analogRead(battery) + ADC0;
+	    // Read the voltage on the relay 
+	    ADC1 = analogRead(relay);
+	    readNumber++;
+	    timeToRead = false;
+	}
+	
+	if (Time.now() > (now + delayBetweenReads)) {
+	    timeToRead = true;
+	    now = Time.now();
+	}
+	
+	if (readNumber == numberOfReads) {
+	    //average the voltage readings by dividing by the numberOfReads and multiply by the ADC to voltage factor of 0.0156
+	    // ADC is 0 to 4095 of 3.3 v; 1.1 kOhm / 20 KOhm voltage divider
+	    voltage = (double)ADC0*0.01560/(double)numberOfReads;
+	    // reset readNumber and reset ADC
+	    readNumber = 0;
+	    ADC0 = 0;
+	    
+	    //If ADC1 is above 4000 assume the pin is high and the relay is open and bypass is false; if below 4000 assume pin is low,
+	    //relay is closed, and bypass is true
+	    if (ADC1 > 4000 ) { bypass = false;
+	    } else if (ADC1 <= 4000) { bypass = true;
+	    }
+	    
+	    // Put the data into JSON
+	    char buf[256];
+        JSONBufferWriter writer(buf, sizeof(buf));
+        writer.beginObject();
+        writer.name("voltage").value(voltage);
+        writer.name("bypass").value(bypass);
+        writer.endObject();
+        writer.buffer()[std::min(writer.bufferSize(), writer.dataSize())] = 0;
+	    
+	    //Check is Particle is connected and publish
+	    if (Particle.connected()) {
+	       Particle.publish("data", buf); 
+	       Log.info("published %s", buf);
+	    }
+	    
+
+	}
+	 
+	
+}
