@@ -14,10 +14,12 @@ unsigned long ADC0 = 0;
 int ADC1;
 double voltage;
 bool bypass;
-int now;
-const int numberOfReads = 10;
-int delayBetweenReads = 6; // in seconds
+int nowRead;
+int nowPublish;
+const int delayBetweenReads = 5; // in seconds
+const int delayBetweenPublish = 60; // in seconds
 bool timeToRead = true;
+bool timeToPublish = false;
 int readNumber = 0;
 
 // We start with the setup function.
@@ -28,7 +30,8 @@ void setup()
 	pinMode(led, OUTPUT);	   // Our LED pin is output (lighting up the LED)
 	pinMode(boardLed, OUTPUT); // Our on-board LED is output as well
 	// set now to now
-	now = Time.now();
+	nowRead = Time.now();
+	nowPublish = Time.now();
 
 }
 
@@ -36,31 +39,36 @@ void setup()
 void loop()
 {
 	if (timeToRead) {
-	    // Read the voltage and add it to the running total to be divided by numberOFReads later
+	    // Read the voltage and add it to the running total to be divided by readNumber later
 	    ADC0 = analogRead(battery) + ADC0;
-	    // Read the voltage on the relay 
-	    ADC1 = analogRead(relay);
 	    readNumber++;
 	    timeToRead = false;
 	}
 	
-	if (Time.now() > (now + delayBetweenReads)) {
+	if (Time.now() >= (nowRead + delayBetweenReads)) {
 	    timeToRead = true;
-	    now = Time.now();
+	    nowRead = Time.now();
 	}
 	
-	if (readNumber == numberOfReads) {
-	    //average the voltage readings by dividing by the numberOfReads and multiply by the ADC to voltage factor of 0.0156
+	if (Time.now() >= (nowPublish + delayBetweenPublish)) {
+	    timeToPublish = true;
+	    nowPublish = Time.now();
+	}
+	
+	if (timeToPublish && readNumber > 0) {
+	    //average the voltage readings by dividing by the readNumber and multiply by the ADC to voltage factor of 0.0156
 	    // ADC is 0 to 4095 of 3.3 v; 1.1 kOhm / 20 KOhm voltage divider
-	    voltage = (double)ADC0*0.01560/(double)numberOfReads;
+	    voltage = (double)ADC0*0.01560/(double)readNumber;
 	    // reset readNumber and reset ADC
 	    readNumber = 0;
 	    ADC0 = 0;
 	    
-	    //If ADC1 is above 4000 assume the pin is high and the relay is open and bypass is false; if below 4000 assume pin is low,
+	    // Read the voltage on the relay 
+	    ADC1 = analogRead(relay);
+	    //If ADC1 is above 3000 assume the pin is high and the relay is open and bypass is false; if below 3000 assume pin is low,
 	    //relay is closed, and bypass is true
-	    if (ADC1 > 4000 ) { bypass = false;
-	    } else if (ADC1 <= 4000) { bypass = true;
+	    if (ADC1 > 3000 ) { bypass = false;
+	    } else if (ADC1 <= 3000) { bypass = true;
 	    }
 	    
 	    // Put the data into JSON
@@ -72,12 +80,13 @@ void loop()
         writer.endObject();
         writer.buffer()[std::min(writer.bufferSize(), writer.dataSize())] = 0;
 	    
-	    //Check is Particle is connected and publish
+	    //Check is Particle is connected and then publish
 	    if (Particle.connected()) {
 	       Particle.publish("data", buf); 
 	       Log.info("published %s", buf);
 	    }
 	    
+	    timeToPublish = false;
 
 	}
 	 
