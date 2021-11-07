@@ -11,7 +11,7 @@ int boardLed = D7;
 int battery = A0;
 int relay = A1;
 unsigned long ADC0 = 0;
-int ADC1;
+unsigned long ADC1 = 0;
 double voltage;
 bool bypass;
 int nowRead;
@@ -41,6 +41,8 @@ void loop()
 	if (timeToRead) {
 	    // Read the voltage and add it to the running total to be divided by readNumber later
 	    ADC0 = analogRead(battery) + ADC0;
+	    // Read the voltage on the relay and add it to the running total to be divided by readNumber later 
+	    ADC1 = analogRead(relay) + ADC1;
 	    readNumber++;
 	    timeToRead = false;
 	}
@@ -56,20 +58,19 @@ void loop()
 	}
 	
 	if (timeToPublish && readNumber > 0) {
-	    //average the voltage readings by dividing by the readNumber and multiply by the ADC to voltage factor of 0.0156
+	    // average the voltage readings by dividing by the readNumber and multiply by the ADC to voltage factor of 0.0156
 	    // ADC is 0 to 4095 of 3.3 v; 1.1 kOhm / 20 KOhm voltage divider
 	    voltage = (double)ADC0*0.01560/(double)readNumber;
-	    // reset readNumber and reset ADC
-	    readNumber = 0;
-	    ADC0 = 0;
 	    
-	    // Read the voltage on the relay 
-	    ADC1 = analogRead(relay);
-	    //If ADC1 is above 3000 assume the pin is high and the relay is open and bypass is false; if below 3000 assume pin is low,
-	    //relay is closed, and bypass is true
-	    if (ADC1 > 3000 ) { bypass = false;
-	    } else if (ADC1 <= 3000) { bypass = true;
+	    // average the voltage on ADC1 by dividing the running total by readNumber 
+	    // If ADC1 is above 3000 assume the pin is high, the relay is open, and bypass is false; if below 3000 assume pin is low,
+	    // relay is closed, and bypass is true
+	    
+	    
+	    if (ADC1/readNumber > 3000 ) { bypass = false;
+	    } else if (ADC1/readNumber <= 3000) { bypass = true;
 	    }
+	    
 	    
 	    // Put the data into JSON
 	    char buf[256];
@@ -77,6 +78,10 @@ void loop()
         writer.beginObject();
         writer.name("voltage").value(voltage);
         writer.name("bypass").value(bypass);
+        writer.name("ADC1").value(ADC1);
+        writer.name("ADC1 / readNumber").value(ADC1/readNumber);
+        writer.name("Analog 1").value(analogRead(relay));
+        writer.name("readNumber").value(readNumber);
         writer.endObject();
         writer.buffer()[std::min(writer.bufferSize(), writer.dataSize())] = 0;
 	    
@@ -86,6 +91,10 @@ void loop()
 	       Log.info("published %s", buf);
 	    }
 	    
+	    // reset readNumber, ADC0, ADC1, and set timeToPublish to false
+	    ADC1 = 0;
+	    ADC0 = 0;
+	    readNumber = 0;
 	    timeToPublish = false;
 
 	}
